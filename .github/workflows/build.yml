@@ -1,0 +1,55 @@
+name: Build APK
+
+# Sube a la raiz del repositorio SOLO el archivo .zip del proyecto (y este archivo en .github/workflows/build.yml).
+# El workflow descomprime el zip y compila el APK.
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Descomprimir el zip del proyecto
+        run: |
+          ZIP=$(ls *.zip 2>/dev/null | head -n 1)
+          if [ -z "$ZIP" ]; then echo "No hay ningun .zip en la raiz del repositorio"; exit 1; fi
+          echo "Usando $ZIP"
+          mkdir -p work
+          unzip -q -o "$ZIP" -d work
+          SETTINGS=$(find work -name settings.gradle -not -path "*/.git/*" | head -n 1)
+          if [ -z "$SETTINGS" ]; then echo "El zip no contiene settings.gradle"; exit 1; fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar paquetes del SDK
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Set up Gradle 8.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.2"
+
+      - name: Compilar APK debug
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle :android:assembleDebug --stacktrace
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: JhonHotelTest-debug-apk
+          path: ${{ env.PROJECT_DIR }}/android/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          
